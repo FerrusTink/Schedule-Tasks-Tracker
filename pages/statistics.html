@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Schedule &amp; Task Tracker</title>
+    <link rel="stylesheet" href="../assets/app.css">
+
+</head>
+<body data-route="statistics">
+  <canvas id="confetti-canvas"></canvas>
+
+  <!-- Fixed Top Ribbon -->
+  <header class="ribbon" id="top-ribbon">
+    <div class="ribbon-left">
+      <div class="clock-line">
+        <span class="clock-time" id="ist-time">00:00</span>
+      </div>
+      <button type="button" class="theme-toggle" id="theme-toggle-btn" aria-label="Toggle dark or light theme">
+        <span id="theme-icon"></span>
+        <span id="theme-label">Dark mode</span>
+      </button>
+    </div>
+    <nav class="ribbon-nav" aria-label="Primary Navigation">
+      <a class="nav-btn" data-route="daily" href="daily-tasks.html">Daily Tasks</a>
+      <a class="nav-btn" data-route="weekly" href="weekly-tasks.html">Weekly Tasks</a>
+      <a class="nav-btn" data-route="events" href="events-meetings.html">Events &amp; Meetings</a>
+      <a class="nav-btn" data-route="other" href="other-tasks.html">Other Tasks</a>
+      <a class="nav-btn" data-route="statistics" href="statistics.html">Statistics</a>
+    </nav>
+    <div class="ribbon-right">
+      <button type="button" class="clock-date-btn" id="ist-date-btn" aria-label="Open monthly calendar">23 November, 2026</button>
+      <span class="clock-day" id="ist-day">Monday</span>
+    </div>
+  </header>
+
+  <!-- Main Page Content -->
+  <main class="app-main" id="app-main">
+<div class="page-header">
+      <h1 class="page-title" id="page-title">Statistics</h1>
+      <div class="header-actions" id="header-actions">
+        <button type="button" class="text-btn" id="undo-btn" aria-label="Undo" style="display:none;">Undo</button>
+        <button type="button" class="text-btn" id="redo-btn" aria-label="Redo" style="display:none;">Redo</button>
+        <button type="button" class="icon-btn" id="edit-mode-btn" aria-label="Edit"></button>
+        <button type="button" class="icon-btn btn-primary" id="add-task-btn" aria-label="Add"></button>
+      </div>
+    </div>
+<section id="statistics-dashboard" class="stats-grid" aria-label="Statistics dashboard">
+      <article class="stats-tile">
+        <div class="stats-tile-heading"><a class="stats-tile-open" id="open-daily-stats" href="daily-task-statistics.html">Daily Task</a><span id="daily-streak" class="stats-streak">0 Days</span></div>
+        <p class="stats-submetric" id="daily-completion-rate"></p>
+      </article>
+      <article class="stats-tile">
+        <div class="stats-tile-heading"><h2>Weekly Task</h2><span id="weekly-streak" class="stats-streak">0 weeks</span></div>
+        <p class="stats-submetric" id="weekly-completion-rate"></p>
+      </article>
+      <article class="stats-tile">
+        <div class="stats-tile-heading"><h2>Events &amp; Meetings</h2></div>
+        <p class="stats-metric" id="next-meeting-metric">No upcoming meetings</p>
+        <p class="stats-submetric" id="meeting-attendance-rate"></p>
+        <p class="stats-submetric" id="upcoming-meetings-count"></p>
+      </article>
+      <article class="stats-tile">
+        <div class="stats-tile-heading"><h2>Other Tasks</h2></div>
+        <p class="stats-metric" id="nearest-deadline-metric">No upcoming deadlines</p>
+        <p class="stats-submetric" id="nearest-deadline-task"></p>
+      </article>
+      <article class="stats-tile"><h2>Weekly Summary</h2></article>
+      <article class="stats-tile"><h2>Monthly Summary</h2></article>
+    </section>
+</main>
+
+
+  <!-- Calendar Pop-up (5.3) -->
+  <div class="popup-backdrop" id="calendar-backdrop" role="dialog" aria-modal="true" aria-label="Monthly Calendar">
+    <div class="popup-card" id="calendar-card">
+      <div class="cal-header">
+        <button type="button" class="icon-btn" id="cal-prev-btn" aria-label="Previous month"></button>
+        <div class="cal-title" id="cal-title">November 2026</div>
+        <button type="button" class="icon-btn" id="cal-next-btn" aria-label="Next month"></button>
+      </div>
+      <div class="cal-weekdays">
+        <div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div><div>Sun</div>
+      </div>
+      <div class="cal-days" id="cal-days"></div>
+    </div>
+  </div>
+
+  <!-- Tag Editor Pop-up (9.3) -->
+  <div class="popup-backdrop" id="tag-editor-backdrop" role="dialog" aria-modal="true" aria-label="Tag Editor">
+    <div class="popup-card" id="tag-editor-card">
+      <h3 class="modal-title" id="tag-editor-title">Add Tag</h3>
+      <div class="modal-field">
+        <label class="modal-label" for="tag-name-input">Tag Name</label>
+        <input type="text" id="tag-name-input" class="field-input" style="text-align:left;" placeholder="e.g. Work, Urgent-1">
+      </div>
+      <div class="modal-field">
+        <span class="modal-label">Colour</span>
+        <div id="tag-color-grid" class="tag-color-grid" role="radiogroup" aria-label="Tag colour"></div>
+      </div>
+      <div id="tag-editor-error" class="draft-error" style="display:none; margin-bottom:10px;"></div>
+      <div class="modal-footer">
+        <button type="button" class="icon-btn btn-danger" id="tag-delete-btn" aria-label="Delete Tag" style="display:none;"></button>
+        <div class="modal-footer-right">
+          <button type="button" class="text-btn" id="tag-discard-btn">Discard</button>
+          <button type="button" class="text-btn btn-primary" id="tag-save-btn">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <button type="button" class="text-btn sign-out-float" id="sign-out-btn" style="display:none;">Sign out</button>
+  <div class="popup-backdrop" id="signout-confirm-backdrop" role="dialog" aria-modal="true" aria-labelledby="signout-confirm-title">
+    <div class="popup-card">
+      <h3 class="modal-title" id="signout-confirm-title">Sign out?</h3>
+      <p id="signout-confirm-message" style="margin:0 0 18px; color:var(--text-secondary); line-height:1.5;"></p>
+      <div class="modal-footer"><div class="modal-footer-right"><button type="button" class="text-btn" id="signout-cancel-btn">Cancel</button><button type="button" class="text-btn btn-primary" id="signout-confirm-btn">Sign out</button></div></div>
+    </div>
+  </div>
+  <div class="auth-backdrop" id="auth-backdrop" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+    <div class="auth-card">
+      <h1 id="auth-title">Sign in to your tracker</h1>
+      <p class="auth-copy" id="auth-copy">Use your email and password to access your tasks on any device.</p>
+      <form class="auth-form" id="auth-form">
+        <label>Email address<input type="email" id="auth-email" autocomplete="email" required></label>
+        <label>Password<input type="password" id="auth-password" autocomplete="current-password" minlength="6" required></label>
+        <div class="auth-error" id="auth-error" role="alert"></div>
+        <div class="auth-actions"><button class="text-btn btn-primary" id="auth-submit" type="submit">Sign in</button><button class="text-btn" id="auth-toggle" type="button">Create account</button></div>
+      </form>
+    </div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="../assets/app.js"></script>
+</body>
+</html>
