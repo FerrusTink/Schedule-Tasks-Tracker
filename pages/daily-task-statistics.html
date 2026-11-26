@@ -36,8 +36,8 @@
 
   <!-- Main Page Content -->
   <main class="app-main" id="app-main">
-<div class="page-header">
-      <h1 class="page-title" id="page-title">Daily Task Statistics</h1>
+<div class="page-header stats-page-header stats-detail-page-header">
+      <div class="stats-intro"><p class="stats-eyebrow">DAILY REVIEW</p><h1 class="page-title" id="page-title">Daily Task Statistics</h1><p class="stats-description">Explore completion by day and review changes over time.</p></div>
       <div class="header-actions" id="header-actions">
         <button type="button" class="text-btn" id="undo-btn" aria-label="Undo" style="display:none;">Undo</button>
         <button type="button" class="text-btn" id="redo-btn" aria-label="Redo" style="display:none;">Redo</button>
@@ -46,12 +46,13 @@
       </div>
     </div>
 <section id="statistics-daily-detail" aria-label="Daily task statistics">
-      <div class="stats-detail-toolbar"><a class="text-btn" id="stats-back-btn" href="statistics.html">← Statistics</a></div>
+      <div class="stats-detail-toolbar"><a class="text-btn" id="stats-back-btn" href="statistics.html">← Back to statistics</a></div>
       <div class="stats-detail-grid">
         <section class="stats-panel" aria-label="Daily completion calendar">
           <div class="stats-calendar-head"><button type="button" class="icon-btn" id="stats-cal-prev" aria-label="Previous month">‹</button><span id="stats-calendar-title" class="stats-calendar-title"></span><button type="button" class="icon-btn" id="stats-cal-next" aria-label="Next month">›</button></div>
           <div class="stats-weekdays"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div>
           <div id="stats-calendar-days" class="stats-calendar-days"></div>
+          <div class="stats-calendar-legend" aria-label="Calendar completion legend"><span><i class="is-complete"></i> Complete</span><span><i class="is-partial"></i> Partial</span><span><i class="is-incomplete"></i> Incomplete</span><span><i class="is-unrecorded"></i> Unrecorded</span></div>
         </section>
         <section class="stats-panel" aria-label="Tasks for selected date">
           <h2 id="stats-selected-date-title"></h2>
@@ -59,7 +60,7 @@
         </section>
       </div>
       <details class="stats-history" id="stats-history-details">
-        <summary>History</summary>
+        <summary>History &amp; change log</summary>
         <div class="stats-history-table-wrap"><table class="stats-history-table"><thead><tr><th>Date</th><th>Completion</th><th>Change Log</th></tr></thead><tbody id="stats-history-body"></tbody></table></div>
       </details>
     </section>

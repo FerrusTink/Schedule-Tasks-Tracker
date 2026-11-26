@@ -2604,8 +2604,8 @@
         return event.date > today || (event.date === today && timeToMinutes(event.start) > n.hour * 60 + n.minute);
       }
 
-      function setStatsSelect(container, id, value, options, label, onChange) {
-        container.innerHTML = `${label} <select class="stats-select" id="${id}" aria-label="${label}">${options.map(option => `<option value="${option}"${Number(value) === option ? ' selected' : ''}>${option} ${option === 1 ? 'week' : 'weeks'}</option>`).join('')}</select>`;
+      function setStatsSelect(container, id, value, options, metric, context, ariaLabel, onChange) {
+        container.innerHTML = `<span class="stats-rate-value">${metric}%</span><span class="stats-rate-control">${context} <select class="stats-select" id="${id}" aria-label="${ariaLabel}">${options.map(option => `<option value="${option}"${Number(value) === option ? ' selected' : ''}>${option} ${option === 1 ? 'week' : 'weeks'}</option>`).join('')}</select></span>`;
         document.getElementById(id).addEventListener('change', event => onChange(Number(event.target.value)));
       }
 
@@ -2614,10 +2614,10 @@
         const weeklyStreak = getConsecutiveWeeklyStreak();
         document.getElementById('daily-streak').textContent = `${dailyStreak} ${dailyStreak === 1 ? 'Day' : 'Days'}`;
         document.getElementById('weekly-streak').textContent = `${weeklyStreak} ${weeklyStreak === 1 ? 'week' : 'weeks'}`;
-        setStatsSelect(document.getElementById('daily-completion-rate'), 'stats-daily-weeks', state.statsDailyWeeks || 1, [1, 2, 4], `${getDailyCompletionRate(state.statsDailyWeeks || 1)}% completion rate of the last`, value => {
+        setStatsSelect(document.getElementById('daily-completion-rate'), 'stats-daily-weeks', state.statsDailyWeeks || 1, [1, 2, 4], getDailyCompletionRate(state.statsDailyWeeks || 1), 'Completion rate over the last', 'Daily completion window', value => {
           state.statsDailyWeeks = value; saveState(state); renderStatisticsDashboard();
         });
-        setStatsSelect(document.getElementById('weekly-completion-rate'), 'stats-weekly-weeks', state.statsWeeklyWeeks || 2, [2, 4, 8, 12], `${getWeeklyCompletionRate(state.statsWeeklyWeeks || 2)}% completion rate of the last`, value => {
+        setStatsSelect(document.getElementById('weekly-completion-rate'), 'stats-weekly-weeks', state.statsWeeklyWeeks || 2, [2, 4, 8, 12], getWeeklyCompletionRate(state.statsWeeklyWeeks || 2), 'Completion rate over the last', 'Weekly completion window', value => {
           state.statsWeeklyWeeks = value; saveState(state); renderStatisticsDashboard();
         });
 
@@ -2630,7 +2630,7 @@
         if (state.signupDate && attendanceCutoff < state.signupDate) attendanceCutoff = state.signupDate;
         const pastEvents = state.events.filter(event => event.date >= attendanceCutoff && event.date <= today && (event.date < today || !isEventLocked(event, n)));
         const attended = pastEvents.filter(event => event.attended).length;
-        setStatsSelect(document.getElementById('meeting-attendance-rate'), 'stats-attendance-weeks', attendanceWeeks, [2, 4, 8, 12], `${percentage(attended, pastEvents.length)}% attendance over the last`, value => {
+        setStatsSelect(document.getElementById('meeting-attendance-rate'), 'stats-attendance-weeks', attendanceWeeks, [2, 4, 8, 12], percentage(attended, pastEvents.length), 'Attendance over the last', 'Meeting attendance window', value => {
           state.statsAttendanceWeeks = value; saveState(state); renderStatisticsDashboard();
         });
         const nextWeekEnd = shiftISODate(today, 7);

@@ -36,8 +36,8 @@
 
   <!-- Main Page Content -->
   <main class="app-main" id="app-main">
-<div class="page-header">
-      <h1 class="page-title" id="page-title">Statistics</h1>
+<div class="page-header stats-page-header">
+      <div class="stats-intro"><p class="stats-eyebrow">YOUR PROGRESS</p><h1 class="page-title" id="page-title">Statistics</h1><p class="stats-description">A clear view of your consistency, upcoming plans, and next priorities.</p></div>
       <div class="header-actions" id="header-actions">
         <button type="button" class="text-btn" id="undo-btn" aria-label="Undo" style="display:none;">Undo</button>
         <button type="button" class="text-btn" id="redo-btn" aria-label="Redo" style="display:none;">Redo</button>
@@ -46,27 +46,29 @@
       </div>
     </div>
 <section id="statistics-dashboard" class="stats-grid" aria-label="Statistics dashboard">
-      <article class="stats-tile">
-        <div class="stats-tile-heading"><a class="stats-tile-open" id="open-daily-stats" href="daily-task-statistics.html">Daily Task</a><span id="daily-streak" class="stats-streak">0 Days</span></div>
+      <article class="stats-tile stats-tile-daily">
+        <div class="stats-tile-heading"><span class="stats-index">01 / DAILY</span><span id="daily-streak" class="stats-streak">0 Days</span></div>
+        <a class="stats-tile-open" id="open-daily-stats" href="daily-task-statistics.html">Daily Task <span aria-hidden="true">↗</span></a>
         <p class="stats-submetric" id="daily-completion-rate"></p>
       </article>
-      <article class="stats-tile">
-        <div class="stats-tile-heading"><h2>Weekly Task</h2><span id="weekly-streak" class="stats-streak">0 weeks</span></div>
+      <article class="stats-tile stats-tile-weekly">
+        <div class="stats-tile-heading"><span class="stats-index">02 / WEEKLY</span><span id="weekly-streak" class="stats-streak">0 weeks</span></div>
+        <h2>Weekly Task</h2>
         <p class="stats-submetric" id="weekly-completion-rate"></p>
       </article>
-      <article class="stats-tile">
-        <div class="stats-tile-heading"><h2>Events &amp; Meetings</h2></div>
+      <article class="stats-tile stats-tile-meetings">
+        <div class="stats-tile-heading"><span class="stats-index">03 / PLANS</span><span class="stats-card-icon" aria-hidden="true">◷</span></div>
+        <h2>Events &amp; Meetings</h2>
         <p class="stats-metric" id="next-meeting-metric">No upcoming meetings</p>
         <p class="stats-submetric" id="meeting-attendance-rate"></p>
         <p class="stats-submetric" id="upcoming-meetings-count"></p>
       </article>
-      <article class="stats-tile">
-        <div class="stats-tile-heading"><h2>Other Tasks</h2></div>
+      <article class="stats-tile stats-tile-deadline">
+        <div class="stats-tile-heading"><span class="stats-index">04 / NEXT UP</span><span class="stats-card-icon" aria-hidden="true">↗</span></div>
+        <h2>Other Tasks</h2>
         <p class="stats-metric" id="nearest-deadline-metric">No upcoming deadlines</p>
         <p class="stats-submetric" id="nearest-deadline-task"></p>
       </article>
-      <article class="stats-tile"><h2>Weekly Summary</h2></article>
-      <article class="stats-tile"><h2>Monthly Summary</h2></article>
     </section>
 </main>
 
