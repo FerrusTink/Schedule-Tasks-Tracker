@@ -4,6 +4,21 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Schedule &amp; Task Tracker</title>
+  <script>
+    (function () {
+      try {
+        var saved = JSON.parse(localStorage.getItem('pa_tracker_v1') || '{}');
+        var theme = saved.theme === 'dark' ? 'dark' : 'light';
+        var schemes = ['amber', 'blue', 'green', 'red'];
+        var scheme = schemes.indexOf(saved.colorScheme) >= 0 ? saved.colorScheme : 'amber';
+        document.documentElement.setAttribute('data-theme', theme);
+        document.documentElement.setAttribute('data-scheme', scheme);
+      } catch (error) {
+        document.documentElement.setAttribute('data-theme', 'light');
+        document.documentElement.setAttribute('data-scheme', 'amber');
+      }
+    })();
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&amp;family=Space+Grotesk:wght@500;600&amp;display=swap" rel="stylesheet">
@@ -19,10 +34,6 @@
       <div class="clock-line">
         <span class="clock-time" id="ist-time">00:00</span>
       </div>
-      <button type="button" class="theme-toggle" id="theme-toggle-btn" aria-label="Toggle dark or light theme">
-        <span id="theme-icon"></span>
-        <span id="theme-label">Dark mode</span>
-      </button>
     </div>
     <nav class="ribbon-nav" aria-label="Primary Navigation">
       <a class="nav-btn" data-route="daily" href="daily-tasks.html">Daily Tasks</a>
@@ -32,6 +43,30 @@
     <div class="ribbon-right">
       <button type="button" class="clock-date-btn" id="ist-date-btn" aria-label="Open monthly calendar">23 November, 2026</button>
       <span class="clock-day" id="ist-day">Monday</span>
+      <div class="settings-wrap">
+        <button type="button" class="settings-toggle" id="settings-toggle-btn" aria-label="Settings" aria-expanded="false" aria-controls="settings-menu"></button>
+        <div class="settings-menu" id="settings-menu" hidden>
+          <div class="settings-group mode-settings-group">
+            <button type="button" class="mode-switch" id="theme-toggle-btn" aria-label="Toggle light and dark mode" aria-pressed="false">
+              <span class="mode-switch-label mode-label-light">Light</span>
+              <span class="mode-switch-track" aria-hidden="true"><span class="mode-switch-thumb"></span></span>
+              <span class="mode-switch-label mode-label-dark">Dark</span>
+            </button>
+          </div>
+          <div class="settings-group" role="group" aria-label="Colour scheme">
+            <button type="button" class="settings-option" id="scheme-toggle-btn" aria-expanded="false" aria-controls="scheme-options">Colour scheme<span class="settings-chevron" aria-hidden="true">⌄</span></button>
+            <div class="settings-schemes" id="scheme-options" hidden>
+              <button type="button" class="settings-option" data-scheme-choice="amber"><span class="scheme-swatch scheme-amber"></span>Amber</button>
+              <button type="button" class="settings-option" data-scheme-choice="blue"><span class="scheme-swatch scheme-blue"></span>Blue</button>
+              <button type="button" class="settings-option" data-scheme-choice="green"><span class="scheme-swatch scheme-green"></span>Green</button>
+              <button type="button" class="settings-option" data-scheme-choice="red"><span class="scheme-swatch scheme-red"></span>Red</button>
+            </div>
+          </div>
+          <div class="settings-group settings-account-group">
+            <button type="button" class="settings-option" id="sign-out-btn" style="display:none;">Sign in to sync</button>
+          </div>
+        </div>
+      </div>
     </div>
   </header>
 
@@ -98,7 +133,6 @@
     </div>
   </div>
 
-  <button type="button" class="text-btn sign-out-float" id="sign-out-btn" style="display:none;">Sign out</button>
   <div class="popup-backdrop" id="signout-confirm-backdrop" role="dialog" aria-modal="true" aria-labelledby="signout-confirm-title">
     <div class="popup-card">
       <h3 class="modal-title" id="signout-confirm-title">Sign out?</h3>

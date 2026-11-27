@@ -13,6 +13,7 @@
       let cloudWriteChain = Promise.resolve();
       let authMode = 'signin';
       const ROUTES = ['daily', 'weekly', 'events', 'other'];
+      const COLOR_SCHEMES = ['amber', 'blue', 'green', 'red'];
       const PAGE_TITLES = {
         daily: 'Daily Tasks',
         weekly: 'Weekly Tasks',
@@ -57,6 +58,10 @@
 
       /* ===== Inline SVG Icons ===== */
       const ICONS = {
+        undo: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-15.5-6.5L3 13"/></svg>',
+        redo: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 15.5-6.5L21 13"/></svg>',
+        settings: '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 1.72l-.13.94a8 8 0 0 0-1.8 1.04l-.9-.32a2 2 0 0 0-2.5.9l-.22.38a2 2 0 0 0 .5 2.6l.76.6a8 8 0 0 0 0 2.08l-.76.6a2 2 0 0 0-.5 2.6l.22.38a2 2 0 0 0 2.5.9l.9-.32a8 8 0 0 0 1.8 1.04l.13.94A2 2 0 0 0 11.78 22h.44a2 2 0 0 0 2-1.72l.13-.94a8 8 0 0 0 1.8-1.04l.9.32a2 2 0 0 0 2.5-.9l.22-.38a2 2 0 0 0-.5-2.6l-.76-.6a8 8 0 0 0 0-2.08l.76-.6a2 2 0 0 0 .5-2.6l-.22-.38a2 2 0 0 0-2.5-.9l-.9.32a8 8 0 0 0-1.8-1.04l-.13-.94A2 2 0 0 0 12.22 2z"/><circle cx="12" cy="12" r="3"/></svg>',
+        signOut: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6"/></svg>',
         pen: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>',
         plus: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
         bin: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>',
@@ -151,6 +156,8 @@
         return {
           version: 1,
           theme: 'light',
+          colorScheme: 'amber',
+          preferenceUpdatedAt: 0,
           lastDailyReset: toISODate(n.year, n.month, n.day),
           lastWeekStart: getMondayISO(n),
           activeTagFilter: null,
@@ -175,6 +182,8 @@
           const merged = {
             version: 1,
             theme: parsed.theme === 'dark' ? 'dark' : 'light',
+            colorScheme: COLOR_SCHEMES.includes(parsed.colorScheme) ? parsed.colorScheme : 'amber',
+            preferenceUpdatedAt: Number(parsed.preferenceUpdatedAt) || 0,
             lastDailyReset: parsed.lastDailyReset || def.lastDailyReset,
             lastWeekStart: parsed.lastWeekStart || def.lastWeekStart,
             activeTagFilter: parsed.activeTagFilter || null,
@@ -306,8 +315,47 @@
         return false; // No end time: ended when event date's day is over (next day 00:00 IST)
       }
 
+      function getEventAttendanceDeadline(ev) {
+        const [year, month, day] = String(ev.date || '').split('-').map(Number);
+        if (!isValidCalendarDate(year, month, day)) return null;
+        let completionHour = 0;
+        let completionMinute = 0;
+        let completionDay = day;
+        let completionMonth = month;
+        let completionYear = year;
+        if (ev.end) {
+          const parts = String(ev.end).split(':').map(Number);
+          if (parts.length !== 2 || parts[0] < 0 || parts[0] > 23 || parts[1] < 0 || parts[1] > 59) return null;
+          [completionHour, completionMinute] = parts;
+        } else {
+          const nextDay = new Date(Date.UTC(year, month - 1, day + 1));
+          completionYear = nextDay.getUTCFullYear();
+          completionMonth = nextDay.getUTCMonth() + 1;
+          completionDay = nextDay.getUTCDate();
+        }
+        const completedAt = Date.UTC(completionYear, completionMonth - 1, completionDay, completionHour, completionMinute) - 330 * 60000;
+        return completedAt + 24 * 60 * 60 * 1000;
+      }
+
+      function finalizeExpiredEventAttendance() {
+        const timestamp = Date.now();
+        let changed = false;
+        state.events.forEach(ev => {
+          const deadline = getEventAttendanceDeadline(ev);
+          if (deadline !== null && timestamp >= deadline && !ev.attendanceFinalized) {
+            if (ev.attended !== true) ev.attended = false;
+            ev.attendanceFinalized = true;
+            changed = true;
+          }
+        });
+        if (changed) saveState(state);
+        return changed;
+      }
+
       function isEventLocked(ev, n) {
         const today = toISODate(n.year, n.month, n.day);
+        const attendanceDeadline = getEventAttendanceDeadline(ev);
+        if (attendanceDeadline !== null && Date.now() >= attendanceDeadline) return true;
         if (ev.date < today) return false;
         if (ev.date > today) return true;
         const nowMins = n.hour * 60 + n.minute;
@@ -316,6 +364,7 @@
       }
 
       function computeStartsIn(ev, n) {
+        if (isEventEnded(ev, n)) return 'Concluded';
         const today = toISODate(n.year, n.month, n.day);
         const daysDiff = diffCalendarDays(ev.date, today);
         if (daysDiff > 0) {
@@ -500,15 +549,18 @@
       /* ===== Theme & Ribbon ===== */
       function applyTheme() {
         document.documentElement.setAttribute('data-theme', state.theme);
-        const iconEl = document.getElementById('theme-icon');
-        const labelEl = document.getElementById('theme-label');
-        if (state.theme === 'dark') {
-          iconEl.innerHTML = ICONS.sun;
-          labelEl.textContent = 'Light mode';
-        } else {
-          iconEl.innerHTML = ICONS.moon;
-          labelEl.textContent = 'Dark mode';
+        document.documentElement.setAttribute('data-scheme', COLOR_SCHEMES.includes(state.colorScheme) ? state.colorScheme : 'amber');
+        const themeToggle = document.getElementById('theme-toggle-btn');
+        if (themeToggle) {
+          const darkMode = state.theme === 'dark';
+          themeToggle.classList.toggle('is-dark', darkMode);
+          themeToggle.setAttribute('aria-pressed', darkMode ? 'true' : 'false');
         }
+        document.querySelectorAll('[data-scheme-choice]').forEach(option => {
+          const selected = option.dataset.schemeChoice === state.colorScheme;
+          option.classList.toggle('is-selected', selected);
+          option.setAttribute('aria-pressed', selected ? 'true' : 'false');
+        });
       }
 
       function syncRibbonHeight() {
@@ -531,6 +583,7 @@
         const dateChanged = curDate !== lastTickDate;
         const minuteChanged = n.minute !== lastTickMinute;
         const rolled = dateChanged ? runRollovers() : false;
+        const attendanceFinalized = finalizeExpiredEventAttendance();
         if (dateChanged) {
           lastTickDate = curDate;
           renderTaskList();
@@ -539,7 +592,7 @@
           lastTickMinute = n.minute;
           if (openDrafts.length === 0 && Object.keys(openEdits).length === 0 && !activeRatingId) renderTaskList();
         }
-        if (rolled) renderTaskList();
+        if (rolled || attendanceFinalized) renderTaskList();
       }
 
       /* ===== Header Actions ===== */
@@ -2408,6 +2461,13 @@
         const firstDay = new Date(Date.UTC(year, calendarMonth - 1, 1));
         const startOffset = (firstDay.getUTCDay() + 6) % 7; // Mon=0..Sun=6
         const daysInMonth = new Date(Date.UTC(year, calendarMonth, 0)).getUTCDate();
+        const meetingsByDate = state.events.reduce((counts, event) => {
+          const parts = String(event.date || '').split('-').map(Number);
+          if (parts.length === 3 && parts[0] === year && parts[1] === calendarMonth && parts[2] >= 1 && parts[2] <= daysInMonth) {
+            counts[parts[2]] = (counts[parts[2]] || 0) + 1;
+          }
+          return counts;
+        }, {});
 
         for (let i = 0; i < startOffset; i++) {
           const empty = document.createElement('div');
@@ -2420,7 +2480,21 @@
           if (calendarMonth === n.month && d === n.day) {
             cell.classList.add('is-today');
           }
-          cell.textContent = String(d);
+          const meetingCount = meetingsByDate[d] || 0;
+          cell.setAttribute('aria-label', meetingCount
+            ? `${MONTHS_FULL[calendarMonth - 1]} ${d}, ${meetingCount} ${meetingCount === 1 ? 'meeting' : 'meetings'}`
+            : `${MONTHS_FULL[calendarMonth - 1]} ${d}`);
+          const dayNumber = document.createElement('span');
+          dayNumber.className = 'cal-day-number';
+          dayNumber.textContent = String(d);
+          cell.appendChild(dayNumber);
+          if (meetingCount) {
+            cell.classList.add('has-event');
+            const dot = document.createElement('span');
+            dot.className = 'cal-event-dot';
+            dot.setAttribute('aria-hidden', 'true');
+            cell.appendChild(dot);
+          }
           daysEl.appendChild(cell);
         }
       }
@@ -2464,18 +2538,40 @@
         document.getElementById('auth-backdrop').classList.add('open');
       }
 
+      function updateAccountButton(isSignedIn) {
+        const button = document.getElementById('sign-out-btn');
+        if (isSignedIn) {
+          button.innerHTML = `${ICONS.signOut}<span>Sign out</span>`;
+          button.classList.add('is-sign-out');
+        } else {
+          button.innerHTML = '<span>Sign in to sync</span>';
+          button.classList.remove('is-sign-out');
+        }
+      }
+
       async function loadAccountState(user) {
         signedInUser = user;
         const accountButton = document.getElementById('sign-out-btn');
-        accountButton.textContent = 'Sign out';
+        updateAccountButton(true);
         accountButton.style.display = 'inline-flex';
         const { data, error } = await supabase.from(CLOUD_TABLE).select('state').eq('user_id', user.id).maybeSingle();
         if (error) throw error;
         const ownerKey = `${STORAGE_KEY}_owner`;
         let cachedOwner = null;
         try { cachedOwner = localStorage.getItem(ownerKey); } catch (_) {}
+        const localPreferences = {
+          theme: state.theme,
+          colorScheme: state.colorScheme,
+          updatedAt: Number(state.preferenceUpdatedAt) || 0
+        };
         if (data && data.state && typeof data.state === 'object') {
           state = data.state;
+          const cloudPreferenceUpdatedAt = Number(state.preferenceUpdatedAt) || 0;
+          if (cachedOwner === user.id && (!cloudPreferenceUpdatedAt || localPreferences.updatedAt > cloudPreferenceUpdatedAt)) {
+            state.theme = localPreferences.theme;
+            state.colorScheme = localPreferences.colorScheme;
+            state.preferenceUpdatedAt = localPreferences.updatedAt;
+          }
           try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (_) {}
         } else {
           // Import legacy local data only once, so another account on this browser never inherits it.
@@ -2484,6 +2580,9 @@
         removeLegacyStatisticsState(state);
         removeDefaultDemoData(state);
         ensureHighPriorityTag(state);
+        state.theme = state.theme === 'dark' ? 'dark' : 'light';
+        state.colorScheme = COLOR_SCHEMES.includes(state.colorScheme) ? state.colorScheme : 'amber';
+        state.preferenceUpdatedAt = Number(state.preferenceUpdatedAt) || 0;
         saveState(state);
         try { localStorage.setItem(ownerKey, user.id); } catch (_) {}
         if (runRollovers()) saveState(state);
@@ -2495,9 +2594,13 @@
       async function bootstrapAuth() {
         const configMissing = SUPABASE_URL.includes('YOUR_PROJECT') || SUPABASE_ANON_KEY.includes('YOUR_');
         const accountButton = document.getElementById('sign-out-btn');
-        accountButton.textContent = 'Sign in to sync';
+        updateAccountButton(false);
         accountButton.style.display = 'inline-flex';
         accountButton.addEventListener('click', () => {
+          document.getElementById('settings-menu').hidden = true;
+          document.getElementById('settings-toggle-btn').setAttribute('aria-expanded', 'false');
+          document.getElementById('scheme-options').hidden = true;
+          document.getElementById('scheme-toggle-btn').setAttribute('aria-expanded', 'false');
           if (signedInUser) {
             const email = signedInUser.email || 'this account';
             document.getElementById('signout-confirm-message').textContent = `Are you sure you want to sign out of ${email}?`;
@@ -2546,7 +2649,7 @@
           }
           signedInUser = null;
           document.getElementById('signout-confirm-backdrop').classList.remove('open');
-          accountButton.textContent = 'Sign in to sync';
+          updateAccountButton(false);
           accountButton.title = 'Sign in to sync your tasks across devices';
         });
         const { data, error } = await supabase.auth.getSession();
@@ -2564,6 +2667,9 @@
         // Static icons
         document.getElementById('edit-mode-btn').innerHTML = ICONS.pen;
         document.getElementById('add-task-btn').innerHTML = ICONS.plus;
+        document.getElementById('undo-btn').innerHTML = ICONS.undo;
+        document.getElementById('redo-btn').innerHTML = ICONS.redo;
+        document.getElementById('settings-toggle-btn').innerHTML = ICONS.settings;
         document.getElementById('cal-prev-btn').innerHTML = ICONS.chevLeft;
         document.getElementById('cal-next-btn').innerHTML = ICONS.chevRight;
         document.getElementById('tag-delete-btn').innerHTML = ICONS.bin;
@@ -2572,14 +2678,44 @@
         applyTheme();
         runRollovers();
 
-        // Theme toggle
+        const settingsToggle = document.getElementById('settings-toggle-btn');
+        const settingsMenu = document.getElementById('settings-menu');
+        const schemeToggle = document.getElementById('scheme-toggle-btn');
+        const schemeOptions = document.getElementById('scheme-options');
+        function closeSettingsMenu() {
+          settingsMenu.hidden = true;
+          settingsToggle.setAttribute('aria-expanded', 'false');
+          schemeOptions.hidden = true;
+          schemeToggle.setAttribute('aria-expanded', 'false');
+        }
+        settingsToggle.addEventListener('click', () => {
+          settingsMenu.hidden = !settingsMenu.hidden;
+          settingsToggle.setAttribute('aria-expanded', settingsMenu.hidden ? 'false' : 'true');
+        });
+        schemeToggle.addEventListener('click', () => {
+          schemeOptions.hidden = !schemeOptions.hidden;
+          schemeToggle.setAttribute('aria-expanded', schemeOptions.hidden ? 'false' : 'true');
+        });
+        document.addEventListener('click', event => {
+          if (!event.target.closest('.settings-wrap')) closeSettingsMenu();
+        });
         document.getElementById('theme-toggle-btn').addEventListener('click', () => {
           state.theme = state.theme === 'dark' ? 'light' : 'dark';
+          state.preferenceUpdatedAt = Date.now();
           saveState(state);
           applyTheme();
           renderTagsGrid();
           renderTaskList();
         });
+        document.querySelectorAll('[data-scheme-choice]').forEach(option => option.addEventListener('click', () => {
+          if (!COLOR_SCHEMES.includes(option.dataset.schemeChoice)) return;
+          state.colorScheme = option.dataset.schemeChoice;
+          state.preferenceUpdatedAt = Date.now();
+          saveState(state);
+          applyTheme();
+          renderTagsGrid();
+          renderTaskList();
+        }));
 
         // Edit mode toggle
         if (ROUTES.includes(currentRoute)) document.getElementById('edit-mode-btn').addEventListener('click', () => {
@@ -2637,6 +2773,7 @@
         // Escape closes pop-ups
         document.addEventListener('keydown', e => {
           if (e.key === 'Escape') {
+            closeSettingsMenu();
             closeCalendar();
             closeTagEditor();
             document.getElementById('signout-confirm-backdrop').classList.remove('open');
