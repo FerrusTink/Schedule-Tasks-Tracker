@@ -8,8 +8,6 @@ The app is split into standalone HTML pages under `pages/`, with shared styles i
 - `pages/weekly-tasks.html`
 - `pages/events-meetings.html`
 - `pages/other-tasks.html`
-- `pages/statistics.html`
-- `pages/daily-task-statistics.html`
 
 Each page imports the common stylesheet and JavaScript and declares its route with `data-route` on `<body>`. The shared script handles page-specific rendering while persisting the same user state through Supabase.
 

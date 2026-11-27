@@ -17,9 +17,7 @@
         daily: 'Daily Tasks',
         weekly: 'Weekly Tasks',
         events: 'Events & Meetings',
-        other: 'Other Tasks',
-        statistics: 'Statistics',
-        'statistics-daily': 'Daily Task Statistics'
+        other: 'Other Tasks'
       };
       const MONTHS_FULL = [
         'January', 'February', 'March', 'April', 'May', 'June',
@@ -147,11 +145,6 @@
 
       /* ===== State & Storage (B4, Section 10) ===== */
       let memoryFallbackState = null;
-      let previousStateForHistory = null;
-      let suppressDailyChangeLog = false;
-      let selectedStatsDate = todayISO();
-      let statsCalendarYear = now().year;
-      let statsCalendarMonth = now().month;
 
       function createDefaultState() {
         const n = now();
@@ -160,13 +153,7 @@
           theme: 'light',
           lastDailyReset: toISODate(n.year, n.month, n.day),
           lastWeekStart: getMondayISO(n),
-          signupDate: null,
           activeTagFilter: null,
-          dailyHistory: [],
-          weeklyHistory: [],
-          statsDailyWeeks: 1,
-          statsWeeklyWeeks: 2,
-          statsAttendanceWeeks: 2,
           tags: [{ id: 'high-priority', name: 'High-Priority', colorKey: 'red', order: 0 }],
           daily: [],
           weekly: [],
@@ -190,13 +177,7 @@
             theme: parsed.theme === 'dark' ? 'dark' : 'light',
             lastDailyReset: parsed.lastDailyReset || def.lastDailyReset,
             lastWeekStart: parsed.lastWeekStart || def.lastWeekStart,
-            signupDate: parsed.signupDate || null,
             activeTagFilter: parsed.activeTagFilter || null,
-            dailyHistory: Array.isArray(parsed.dailyHistory) ? parsed.dailyHistory : [],
-            weeklyHistory: Array.isArray(parsed.weeklyHistory) ? parsed.weeklyHistory : [],
-            statsDailyWeeks: [1, 2, 4].includes(Number(parsed.statsDailyWeeks)) ? Number(parsed.statsDailyWeeks) : 1,
-            statsWeeklyWeeks: [2, 4, 8, 12].includes(Number(parsed.statsWeeklyWeeks)) ? Number(parsed.statsWeeklyWeeks) : 2,
-            statsAttendanceWeeks: [2, 4, 8, 12].includes(Number(parsed.statsAttendanceWeeks)) ? Number(parsed.statsAttendanceWeeks) : 2,
             tags: Array.isArray(parsed.tags) ? parsed.tags : def.tags,
             daily: Array.isArray(parsed.daily) ? parsed.daily : [],
             weekly: Array.isArray(parsed.weekly) ? parsed.weekly : [],
@@ -229,88 +210,14 @@
         targetState.tags.push({ id: 'high-priority', name: 'High-Priority', colorKey: 'red', order: firstOrder - 1 });
       }
 
-      function recordDailySnapshot(targetState, date, tasks) {
-        if (!Array.isArray(targetState.dailyHistory)) targetState.dailyHistory = [];
-        let record = targetState.dailyHistory.find(item => item.date === date);
-        if (!record) {
-          record = { date, tasks: [], changeLog: [] };
-          targetState.dailyHistory.push(record);
-        }
-        record.tasks = (Array.isArray(tasks) ? tasks : []).map(task => ({
-          id: task.id,
-          task: task.task || '',
-          detail: task.detail || '',
-          completed: !!task.completed,
-          order: task.order ?? 0
-        }));
-        if (!Array.isArray(record.changeLog)) record.changeLog = [];
-        return record;
-      }
-
-      function recordWeeklySnapshot(targetState, weekStart, tasks) {
-        if (!Array.isArray(targetState.weeklyHistory)) targetState.weeklyHistory = [];
-        let record = targetState.weeklyHistory.find(item => item.weekStart === weekStart);
-        if (!record) {
-          record = { weekStart, tasks: [] };
-          targetState.weeklyHistory.push(record);
-        }
-        record.tasks = (Array.isArray(tasks) ? tasks : []).map(task => ({
-          id: task.id,
-          task: task.task || '',
-          completed: !!task.completed,
-          completion: Number(task.completion) || 0,
-          goal: task.goal || '',
-          order: task.order ?? 0
-        }));
-      }
-
-      function recordDailyChange(targetState, message) {
-        const record = recordDailySnapshot(targetState, todayISO(), targetState.daily);
-        if (message) record.changeLog.push(message);
-      }
-
-      function trackStatisticsHistory(nextState) {
-        if (!Array.isArray(nextState.dailyHistory)) nextState.dailyHistory = [];
-        if (!Array.isArray(nextState.weeklyHistory)) nextState.weeklyHistory = [];
-        const previous = previousStateForHistory;
-        if (previous && !suppressDailyChangeLog) {
-          const oldDaily = new Map((previous.daily || []).map(task => [task.id, task]));
-          const newDaily = new Map((nextState.daily || []).map(task => [task.id, task]));
-          const messages = [];
-          newDaily.forEach((task, id) => {
-            const old = oldDaily.get(id);
-            if (!old) messages.push(`Added task: ${task.task || 'Untitled task'}`);
-            else if (!!old.completed !== !!task.completed) messages.push(`${task.completed ? 'Completed' : 'Reopened'} task: ${task.task || old.task || 'Untitled task'}`);
-            else if (old.task !== task.task) messages.push(`Renamed task: ${old.task || 'Untitled task'} → ${task.task || 'Untitled task'}`);
-            else if (old.detail !== task.detail || old.goal !== task.goal || old.goalType !== task.goalType || old.order !== task.order || JSON.stringify(old.tagIds || []) !== JSON.stringify(task.tagIds || [])) messages.push(`Updated task: ${task.task || 'Untitled task'}`);
-          });
-          oldDaily.forEach((task, id) => { if (!newDaily.has(id)) messages.push(`Removed task: ${task.task || 'Untitled task'}`); });
-          messages.forEach(message => recordDailyChange(nextState, message));
-        }
-        recordDailySnapshot(nextState, todayISO(), nextState.daily);
-        recordWeeklySnapshot(nextState, getMondayISO(now()), nextState.weekly);
-        previousStateForHistory = JSON.parse(JSON.stringify(nextState));
-      }
-
-      function normalizeStatisticsState(targetState) {
-        if (!Array.isArray(targetState.dailyHistory)) targetState.dailyHistory = [];
-        if (!Array.isArray(targetState.weeklyHistory)) targetState.weeklyHistory = [];
-        if (![1, 2, 4].includes(Number(targetState.statsDailyWeeks))) targetState.statsDailyWeeks = 1;
-        if (![2, 4, 8, 12].includes(Number(targetState.statsWeeklyWeeks))) targetState.statsWeeklyWeeks = 2;
-        if (![2, 4, 8, 12].includes(Number(targetState.statsAttendanceWeeks))) targetState.statsAttendanceWeeks = 2;
-        ROUTES.forEach(route => { if (!Array.isArray(targetState[route])) targetState[route] = []; });
-        if (!Array.isArray(targetState.tags)) targetState.tags = [];
-      }
-
-      function dateFromAuthTimestamp(timestamp) {
-        if (!timestamp) return todayISO();
-        const date = new Date(new Date(timestamp).getTime() + 330 * 60000);
-        if (Number.isNaN(date.getTime())) return todayISO();
-        return toISODate(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate());
+      function removeLegacyStatisticsState(targetState) {
+        ['signupDate', 'dailyHistory', 'weeklyHistory', 'statsDailyWeeks', 'statsWeeklyWeeks', 'statsAttendanceWeeks'].forEach(key => {
+          delete targetState[key];
+        });
       }
 
       function saveState(nextState) {
-        trackStatisticsHistory(nextState);
+        removeLegacyStatisticsState(nextState);
         memoryFallbackState = nextState;
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
@@ -332,7 +239,6 @@
       }
 
       let state = loadState();
-      if (!previousStateForHistory) previousStateForHistory = JSON.parse(JSON.stringify(state));
 
       /* ===== Ephemeral UI State ===== */
       let currentRoute = document.body.dataset.route || 'daily';
@@ -355,14 +261,12 @@
         let changed = false;
 
         if (state.lastDailyReset !== today) {
-          recordDailySnapshot(state, state.lastDailyReset, state.daily);
           state.daily.forEach(t => { t.completed = false; });
           state.lastDailyReset = today;
           changed = true;
         }
 
         if (state.lastWeekStart !== weekMon) {
-          recordWeeklySnapshot(state, state.lastWeekStart, state.weekly);
           state.weekly = state.weekly.filter(t => {
             if (t.thisWeekOnly && t.completed) return false;
             if (!t.thisWeekOnly) {
@@ -385,9 +289,7 @@
         if (state.other.length !== beforeOtherLen) changed = true;
 
         if (changed) {
-          suppressDailyChangeLog = true;
           saveState(state);
-          suppressDailyChangeLog = false;
         }
         return changed;
       }
@@ -630,11 +532,6 @@
         const minuteChanged = n.minute !== lastTickMinute;
         const rolled = dateChanged ? runRollovers() : false;
         if (dateChanged) {
-          if (selectedStatsDate === lastTickDate) {
-            selectedStatsDate = curDate;
-            statsCalendarYear = n.year;
-            statsCalendarMonth = n.month;
-          }
           lastTickDate = curDate;
           renderTaskList();
         } else if (minuteChanged) {
@@ -643,10 +540,6 @@
           if (openDrafts.length === 0 && Object.keys(openEdits).length === 0 && !activeRatingId) renderTaskList();
         }
         if (rolled) renderTaskList();
-        if (dateChanged || minuteChanged) {
-          if (currentRoute === 'statistics-daily') renderStatisticsDailyDetail();
-          else if (currentRoute === 'statistics') renderStatisticsDashboard();
-        }
       }
 
       /* ===== Header Actions ===== */
@@ -2537,202 +2430,10 @@
         document.getElementById('calendar-backdrop').classList.remove('open');
       }
 
-      /* ===== Statistics calculations and views ===== */
-      function shiftISODate(isoDate, offset) {
-        const { year, month, day } = parseISODate(isoDate);
-        const date = new Date(Date.UTC(year, month - 1, day + offset));
-        return toISODate(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate());
-      }
-
-      function percentage(completed, total) {
-        return total ? Math.round((completed / total) * 100) : 0;
-      }
-
-      function getDailyCompletionRate(weeks) {
-        let cutoff = shiftISODate(todayISO(), -(weeks * 7) + 1);
-        if (state.signupDate && cutoff < state.signupDate) cutoff = state.signupDate;
-        const records = (state.dailyHistory || []).filter(record => record.date >= cutoff && record.date <= todayISO());
-        const tasks = records.flatMap(record => record.tasks || []);
-        return percentage(tasks.filter(task => task.completed).length, tasks.length);
-      }
-
-      function getWeeklyCompletionRate(weeks) {
-        const currentWeek = getMondayISO(now());
-        let cutoff = shiftISODate(currentWeek, -(weeks - 1) * 7);
-        if (state.signupDate) {
-          const signupWeek = getMondayISO(parseISODate(state.signupDate));
-          if (cutoff < signupWeek) cutoff = signupWeek;
-        }
-        const records = (state.weeklyHistory || []).filter(record => record.weekStart >= cutoff && record.weekStart <= currentWeek);
-        const tasks = records.flatMap(record => record.tasks || []);
-        return percentage(tasks.filter(task => task.completed).length, tasks.length);
-      }
-
-      function getConsecutiveDailyStreak() {
-        const byDate = new Map((state.dailyHistory || []).map(record => [record.date, record]));
-        let cursor = todayISO();
-        let record = byDate.get(cursor);
-        if (!record || !record.tasks.length || !record.tasks.every(task => task.completed)) cursor = shiftISODate(cursor, -1);
-        let streak = 0;
-        while ((!state.signupDate || cursor >= state.signupDate) && (record = byDate.get(cursor)) && record.tasks.length && record.tasks.every(task => task.completed)) {
-          streak++;
-          cursor = shiftISODate(cursor, -1);
-        }
-        return streak;
-      }
-
-      function getConsecutiveWeeklyStreak() {
-        const byWeek = new Map((state.weeklyHistory || []).map(record => [record.weekStart, record]));
-        let cursor = getMondayISO(now());
-        let record = byWeek.get(cursor);
-        if (!record || !record.tasks.length || !record.tasks.every(task => task.completed)) cursor = shiftISODate(cursor, -7);
-        let streak = 0;
-        const signupWeek = state.signupDate ? getMondayISO(parseISODate(state.signupDate)) : null;
-        while ((!signupWeek || cursor >= signupWeek) && (record = byWeek.get(cursor)) && record.tasks.length && record.tasks.every(task => task.completed)) {
-          streak++;
-          cursor = shiftISODate(cursor, -7);
-        }
-        return streak;
-      }
-
-      function formatDurationDays(days) {
-        return days === 0 ? 'today' : days === 1 ? '1 day' : `${days} days`;
-      }
-
-      function isUpcomingMeeting(event, n) {
-        const today = toISODate(n.year, n.month, n.day);
-        return event.date > today || (event.date === today && timeToMinutes(event.start) > n.hour * 60 + n.minute);
-      }
-
-      function setStatsSelect(container, id, value, options, metric, context, ariaLabel, onChange) {
-        container.innerHTML = `<span class="stats-rate-value">${metric}%</span><span class="stats-rate-control">${context} <select class="stats-select" id="${id}" aria-label="${ariaLabel}">${options.map(option => `<option value="${option}"${Number(value) === option ? ' selected' : ''}>${option} ${option === 1 ? 'week' : 'weeks'}</option>`).join('')}</select></span>`;
-        document.getElementById(id).addEventListener('change', event => onChange(Number(event.target.value)));
-      }
-
-      function renderStatisticsDashboard() {
-        const dailyStreak = getConsecutiveDailyStreak();
-        const weeklyStreak = getConsecutiveWeeklyStreak();
-        document.getElementById('daily-streak').textContent = `${dailyStreak} ${dailyStreak === 1 ? 'Day' : 'Days'}`;
-        document.getElementById('weekly-streak').textContent = `${weeklyStreak} ${weeklyStreak === 1 ? 'week' : 'weeks'}`;
-        setStatsSelect(document.getElementById('daily-completion-rate'), 'stats-daily-weeks', state.statsDailyWeeks || 1, [1, 2, 4], getDailyCompletionRate(state.statsDailyWeeks || 1), 'Completion rate over the last', 'Daily completion window', value => {
-          state.statsDailyWeeks = value; saveState(state); renderStatisticsDashboard();
-        });
-        setStatsSelect(document.getElementById('weekly-completion-rate'), 'stats-weekly-weeks', state.statsWeeklyWeeks || 2, [2, 4, 8, 12], getWeeklyCompletionRate(state.statsWeeklyWeeks || 2), 'Completion rate over the last', 'Weekly completion window', value => {
-          state.statsWeeklyWeeks = value; saveState(state); renderStatisticsDashboard();
-        });
-
-        const n = now();
-        const today = todayISO();
-        const nextEvent = state.events.filter(event => isUpcomingMeeting(event, n)).sort((a, b) => `${a.date}T${a.start}`.localeCompare(`${b.date}T${b.start}`))[0];
-        document.getElementById('next-meeting-metric').textContent = nextEvent ? `Next meeting in ${computeStartsIn(nextEvent, n)}` : 'No upcoming meetings';
-        const attendanceWeeks = state.statsAttendanceWeeks || 2;
-        let attendanceCutoff = shiftISODate(today, -(attendanceWeeks * 7) + 1);
-        if (state.signupDate && attendanceCutoff < state.signupDate) attendanceCutoff = state.signupDate;
-        const pastEvents = state.events.filter(event => event.date >= attendanceCutoff && event.date <= today && (event.date < today || !isEventLocked(event, n)));
-        const attended = pastEvents.filter(event => event.attended).length;
-        setStatsSelect(document.getElementById('meeting-attendance-rate'), 'stats-attendance-weeks', attendanceWeeks, [2, 4, 8, 12], percentage(attended, pastEvents.length), 'Attendance over the last', 'Meeting attendance window', value => {
-          state.statsAttendanceWeeks = value; saveState(state); renderStatisticsDashboard();
-        });
-        const nextWeekEnd = shiftISODate(today, 7);
-        const upcomingCount = state.events.filter(event => event.date <= nextWeekEnd && isUpcomingMeeting(event, n)).length;
-        document.getElementById('upcoming-meetings-count').textContent = `${upcomingCount} ${upcomingCount === 1 ? 'meeting' : 'meetings'} scheduled over the next week`;
-
-        const nearest = state.other.filter(task => task.deadline && task.deadline >= today && !task.completed).sort((a, b) => a.deadline.localeCompare(b.deadline))[0];
-        if (nearest) {
-          const days = diffCalendarDays(nearest.deadline, today);
-          document.getElementById('nearest-deadline-metric').textContent = `Deadline ${formatDurationDays(days)}`;
-          document.getElementById('nearest-deadline-task').textContent = nearest.task || 'Upcoming task';
-        } else {
-          document.getElementById('nearest-deadline-metric').textContent = 'No upcoming deadlines';
-          document.getElementById('nearest-deadline-task').textContent = '';
-        }
-      }
-
-      function getDailyRecord(date) {
-        return (state.dailyHistory || []).find(record => record.date === date) || null;
-      }
-
-      function renderStatisticsCalendar() {
-        const title = `${MONTHS_FULL[statsCalendarMonth - 1]} ${statsCalendarYear}`;
-        document.getElementById('stats-calendar-title').textContent = title;
-        const daysEl = document.getElementById('stats-calendar-days');
-        daysEl.innerHTML = '';
-        const firstDay = new Date(Date.UTC(statsCalendarYear, statsCalendarMonth - 1, 1));
-        const offset = (firstDay.getUTCDay() + 6) % 7;
-        const count = new Date(Date.UTC(statsCalendarYear, statsCalendarMonth, 0)).getUTCDate();
-        for (let i = 0; i < offset; i++) {
-          const empty = document.createElement('span');
-          empty.className = 'stats-day is-empty';
-          daysEl.appendChild(empty);
-        }
-        for (let day = 1; day <= count; day++) {
-          const iso = toISODate(statsCalendarYear, statsCalendarMonth, day);
-          const button = document.createElement('button');
-          button.type = 'button';
-          button.className = 'stats-day';
-          button.textContent = String(day);
-          if (iso === selectedStatsDate) button.classList.add('is-selected');
-          const validDate = iso <= todayISO() && (!state.signupDate || iso >= state.signupDate);
-          const record = validDate ? getDailyRecord(iso) : null;
-          if (record && record.tasks && record.tasks.length) {
-            const done = record.tasks.filter(task => task.completed).length;
-            button.classList.add(done === record.tasks.length ? 'is-complete' : done === 0 ? 'is-incomplete' : 'is-partial');
-            button.title = `${done} of ${record.tasks.length} tasks completed`;
-          }
-          button.addEventListener('click', () => {
-            selectedStatsDate = iso;
-            renderStatisticsDailyDetail();
-          });
-          daysEl.appendChild(button);
-        }
-      }
-
-      function renderSelectedDailyRecord() {
-        const title = document.getElementById('stats-selected-date-title');
-        const content = document.getElementById('stats-selected-day-content');
-        title.textContent = formatDisplayDate(selectedStatsDate);
-        const validDate = selectedStatsDate <= todayISO() && (!state.signupDate || selectedStatsDate >= state.signupDate);
-        const record = validDate ? getDailyRecord(selectedStatsDate) : null;
-        if (!record) {
-          content.innerHTML = '<div class="stats-empty">Insufficient Data</div>';
-          return;
-        }
-        if (!record.tasks.length) {
-          content.innerHTML = '<div class="stats-empty">No tasks recorded for this day</div>';
-          return;
-        }
-        const rows = record.tasks.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map(task => `<div>${escapeHtml(task.task)}</div><div>${escapeHtml(task.detail)}</div><div>${task.completed ? '<span class="sem-green" aria-label="Completed">✓</span>' : '<span class="sem-red" aria-label="Not completed">✕</span>'}</div>`).join('');
-        content.innerHTML = `<div class="stats-day-list"><div class="stats-list-head">Task</div><div class="stats-list-head">Detail</div><div class="stats-list-head">Completion</div>${rows}</div>`;
-      }
-
-      function renderDailyHistoryTable() {
-        const body = document.getElementById('stats-history-body');
-        const records = (state.dailyHistory || []).filter(record => (!state.signupDate || record.date >= state.signupDate) && record.date <= todayISO()).slice().sort((a, b) => b.date.localeCompare(a.date));
-        if (!records.length) {
-          body.innerHTML = '<tr><td colspan="3" class="stats-empty">No history recorded yet</td></tr>';
-          return;
-        }
-        body.innerHTML = records.map(record => {
-          const tasks = record.tasks || [];
-          const done = tasks.filter(task => task.completed).length;
-          const rowClass = tasks.length && done === tasks.length ? 'history-all-done' : tasks.length && done === 0 ? 'history-none-done' : '';
-          const circles = tasks.length ? `<div class="history-circles">${tasks.map(task => `<span class="history-circle ${task.completed ? 'is-done' : 'is-not-done'}" title="${escapeHtml(task.task)}: ${task.completed ? 'completed' : 'not completed'}" aria-label="${escapeHtml(task.task)} ${task.completed ? 'completed' : 'not completed'}"></span>`).join('')}</div>` : '<span class="history-circle-empty">—</span>';
-          const changes = Array.isArray(record.changeLog) && record.changeLog.length ? `<ul class="history-change-list">${record.changeLog.map(change => `<li>${escapeHtml(change)}</li>`).join('')}</ul>` : '—';
-          return `<tr class="${rowClass}"><td>${escapeHtml(formatDisplayDate(record.date))}</td><td>${circles}</td><td>${changes}</td></tr>`;
-        }).join('');
-      }
-
-      function renderStatisticsDailyDetail() {
-        renderStatisticsCalendar();
-        renderSelectedDailyRecord();
-        renderDailyHistoryTable();
-      }
-
       /* ===== Master Render ===== */
       function renderAll() {
-        const isDailyStatistics = currentRoute === 'statistics-daily';
         document.querySelectorAll('.nav-btn').forEach(btn => {
-          const active = btn.dataset.route === currentRoute || (isDailyStatistics && btn.dataset.route === 'statistics');
+          const active = btn.dataset.route === currentRoute;
           btn.classList.toggle('active', active);
         });
         const title = document.getElementById('page-title');
@@ -2740,8 +2441,6 @@
         updateHeaderActions();
         renderTaskList();
         renderTagsGrid();
-        if (currentRoute === 'statistics') renderStatisticsDashboard();
-        if (isDailyStatistics) renderStatisticsDailyDetail();
         syncRibbonHeight();
       }
 
@@ -2775,13 +2474,9 @@
           // Import legacy local data only once, so another account on this browser never inherits it.
           if (cachedOwner && cachedOwner !== user.id) state = createDefaultState();
         }
-        normalizeStatisticsState(state);
-        if (!state.signupDate) state.signupDate = dateFromAuthTimestamp(user.created_at);
+        removeLegacyStatisticsState(state);
         removeDefaultDemoData(state);
         ensureHighPriorityTag(state);
-        recordDailySnapshot(state, todayISO(), state.daily);
-        recordWeeklySnapshot(state, getMondayISO(now()), state.weekly);
-        previousStateForHistory = JSON.parse(JSON.stringify(state));
         saveState(state);
         try { localStorage.setItem(ownerKey, user.id); } catch (_) {}
         if (runRollovers()) saveState(state);
@@ -2863,20 +2558,6 @@
 
         applyTheme();
         runRollovers();
-
-        // Page navigation uses the dedicated HTML page files.
-        const statsCalPrev = document.getElementById('stats-cal-prev');
-        const statsCalNext = document.getElementById('stats-cal-next');
-        if (statsCalPrev) statsCalPrev.addEventListener('click', () => {
-          statsCalendarMonth--;
-          if (statsCalendarMonth < 1) { statsCalendarMonth = 12; statsCalendarYear--; }
-          renderStatisticsDailyDetail();
-        });
-        if (statsCalNext) statsCalNext.addEventListener('click', () => {
-          statsCalendarMonth++;
-          if (statsCalendarMonth > 12) { statsCalendarMonth = 1; statsCalendarYear++; }
-          renderStatisticsDailyDetail();
-        });
 
         // Theme toggle
         document.getElementById('theme-toggle-btn').addEventListener('click', () => {
