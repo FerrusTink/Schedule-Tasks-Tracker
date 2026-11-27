@@ -1538,6 +1538,11 @@
         const n = now();
         const today = toISODate(n.year, n.month, n.day);
         const isEdit = editMode[route];
+        const summary = document.getElementById('task-summary-badge');
+        if (summary) {
+          const doneCount = state[route].filter(task => route === 'events' ? isEventEnded(task, n) : !!task.completed).length;
+          summary.textContent = `${doneCount} of ${state[route].length} completed`;
+        }
 
         // Header Row (exact column headers)
         const headersMap = {
@@ -2461,7 +2466,9 @@
 
       async function loadAccountState(user) {
         signedInUser = user;
-        document.getElementById('sign-out-btn').style.display = 'inline-flex';
+        const accountButton = document.getElementById('sign-out-btn');
+        accountButton.textContent = 'Sign out';
+        accountButton.style.display = 'inline-flex';
         const { data, error } = await supabase.from(CLOUD_TABLE).select('state').eq('user_id', user.id).maybeSingle();
         if (error) throw error;
         const ownerKey = `${STORAGE_KEY}_owner`;
@@ -2487,10 +2494,21 @@
 
       async function bootstrapAuth() {
         const configMissing = SUPABASE_URL.includes('YOUR_PROJECT') || SUPABASE_ANON_KEY.includes('YOUR_');
+        const accountButton = document.getElementById('sign-out-btn');
+        accountButton.textContent = 'Sign in to sync';
+        accountButton.style.display = 'inline-flex';
+        accountButton.addEventListener('click', () => {
+          if (signedInUser) {
+            const email = signedInUser.email || 'this account';
+            document.getElementById('signout-confirm-message').textContent = `Are you sure you want to sign out of ${email}?`;
+            document.getElementById('signout-confirm-backdrop').classList.add('open');
+            return;
+          }
+          setAuthView('signin', configMissing || !window.supabase ? 'Cloud sign-in is unavailable. Your tasks are saved on this device.' : '');
+          if (configMissing || !window.supabase) document.getElementById('auth-submit').disabled = true;
+        });
         if (!window.supabase || configMissing) {
-          setAuthView('signin', 'Account sync is not configured yet. Configure the Supabase project URL and publishable key in assets/app.js, then reload.');
-          document.getElementById('auth-submit').disabled = true;
-          document.getElementById('auth-toggle').disabled = true;
+          accountButton.title = 'Cloud sign-in is not configured';
           return;
         }
         supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
@@ -2516,11 +2534,6 @@
             document.getElementById('auth-error').textContent = error.message || 'Could not authenticate. Please try again.';
           } finally { submit.disabled = false; }
         });
-        document.getElementById('sign-out-btn').addEventListener('click', () => {
-          const email = signedInUser && signedInUser.email ? signedInUser.email : 'this account';
-          document.getElementById('signout-confirm-message').textContent = `Are you sure you want to sign out of ${email}?`;
-          document.getElementById('signout-confirm-backdrop').classList.add('open');
-        });
         document.getElementById('signout-cancel-btn').addEventListener('click', () => document.getElementById('signout-confirm-backdrop').classList.remove('open'));
         document.getElementById('signout-confirm-backdrop').addEventListener('click', event => {
           if (event.target.id === 'signout-confirm-backdrop') event.currentTarget.classList.remove('open');
@@ -2533,8 +2546,8 @@
           }
           signedInUser = null;
           document.getElementById('signout-confirm-backdrop').classList.remove('open');
-          document.getElementById('sign-out-btn').style.display = 'none';
-          setAuthView('signin');
+          accountButton.textContent = 'Sign in to sync';
+          accountButton.title = 'Sign in to sync your tasks across devices';
         });
         const { data, error } = await supabase.auth.getSession();
         if (error) { showCloudStatus(`Could not check saved login: ${error.message}`); return; }
@@ -2543,7 +2556,7 @@
           catch (err) {
             showCloudStatus(`Could not load cloud data: ${err.message}`);
           }
-        } else setAuthView('signin');
+        }
       }
 
       /* ===== Event Wiring ===== */
