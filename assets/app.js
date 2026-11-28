@@ -18,7 +18,8 @@
         daily: 'Daily Tasks',
         weekly: 'Weekly Tasks',
         events: 'Events & Meetings',
-        other: 'Other Tasks'
+        other: 'Other Tasks',
+        stats: 'Statistics'
       };
       const MONTHS_FULL = [
         'January', 'February', 'March', 'April', 'May', 'June',
@@ -28,6 +29,12 @@
         'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
         'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
       ];
+      const STATS_PERIODS = {
+        daily: [['7', '7 days', 7], ['14', '14 days', 14], ['30', '30 days', 30], ['month', 'This month', 'month'], ['lastMonth', 'Last month', 'lastMonth']],
+        weekly: [['7', '7 days', 7], ['14', '14 days', 14], ['28', '28 days', 28], ['month', 'This month', 'month'], ['lastMonth', 'Last month', 'lastMonth']],
+        events: [['7', '7 days', 7], ['14', '14 days', 14], ['30', '30 days', 30], ['month', 'This month', 'month'], ['lastMonth', 'Last month', 'lastMonth']],
+        other: [['15', '15 days', 15], ['30', '30 days', 30], ['month', 'This month', 'month'], ['lastMonth', 'Last month', 'lastMonth']]
+      };
       const WEEKDAYS_FULL = [
         'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
       ];
@@ -162,6 +169,8 @@
           lastWeekStart: getMondayISO(n),
           activeTagFilter: null,
           tags: [{ id: 'high-priority', name: 'High-Priority', colorKey: 'red', order: 0 }],
+          statsHistory: {},
+          statsLedger: { otherTasks: [], meetings: [] },
           daily: [],
           weekly: [],
           events: [],
@@ -188,11 +197,15 @@
             lastWeekStart: parsed.lastWeekStart || def.lastWeekStart,
             activeTagFilter: parsed.activeTagFilter || null,
             tags: Array.isArray(parsed.tags) ? parsed.tags : def.tags,
+            statsHistory: parsed.statsHistory && typeof parsed.statsHistory === 'object' ? parsed.statsHistory : {},
+            statsLedger: parsed.statsLedger && typeof parsed.statsLedger === 'object' ? parsed.statsLedger : { otherTasks: [], meetings: [] },
             daily: Array.isArray(parsed.daily) ? parsed.daily : [],
             weekly: Array.isArray(parsed.weekly) ? parsed.weekly : [],
             events: Array.isArray(parsed.events) ? parsed.events : [],
             other: Array.isArray(parsed.other) ? parsed.other : []
           };
+          migrateLegacyStatistics(merged, parsed);
+          ensureStatsLedger(merged);
           ensureHighPriorityTag(merged);
           return merged;
         } catch (e) {
@@ -225,7 +238,102 @@
         });
       }
 
+      function convertLegacySnapshot(type, record) {
+        const tasks = Array.isArray(record.tasks) ? record.tasks : [];
+        const snapshot = { done: 0, total: 0, completed: 0, tasks: tasks.length };
+        tasks.forEach(task => {
+          const goal = type === 'weekly' && Number.isFinite(parseInt(task.goal, 10)) ? Math.max(1, parseInt(task.goal, 10)) : 1;
+          const done = type === 'weekly' && Number.isFinite(parseInt(task.goal, 10))
+            ? Math.min(goal, Math.max(0, Number(task.completion) || 0))
+            : (task.completed ? 1 : 0);
+          snapshot.done += done;
+          snapshot.total += goal;
+          if (task.completed) snapshot.completed++;
+        });
+        return snapshot;
+      }
+
+      function migrateLegacyStatistics(targetState, sourceState = targetState) {
+        if (!targetState.statsHistory || typeof targetState.statsHistory !== 'object') targetState.statsHistory = {};
+        (Array.isArray(sourceState.dailyHistory) ? sourceState.dailyHistory : []).forEach(record => {
+          if (!record || !/^\d{4}-\d{2}-\d{2}$/.test(record.date || '')) return;
+          const snapshot = targetState.statsHistory[record.date] || {};
+          if (!snapshot.daily) snapshot.daily = convertLegacySnapshot('daily', record);
+          targetState.statsHistory[record.date] = snapshot;
+        });
+        (Array.isArray(sourceState.weeklyHistory) ? sourceState.weeklyHistory : []).forEach(record => {
+          if (!record || !/^\d{4}-\d{2}-\d{2}$/.test(record.weekStart || '')) return;
+          const snapshot = targetState.statsHistory[record.weekStart] || {};
+          if (!snapshot.weekly) snapshot.weekly = convertLegacySnapshot('weekly', record);
+          targetState.statsHistory[record.weekStart] = snapshot;
+        });
+      }
+
+      function ensureStatsLedger(targetState) {
+        if (!targetState.statsLedger || typeof targetState.statsLedger !== 'object') targetState.statsLedger = {};
+        if (!Array.isArray(targetState.statsLedger.otherTasks)) targetState.statsLedger.otherTasks = [];
+        if (!Array.isArray(targetState.statsLedger.meetings)) targetState.statsLedger.meetings = [];
+        const otherById = new Map(targetState.statsLedger.otherTasks.map(item => [item.id, item]));
+        (targetState.other || []).forEach(task => {
+          if (!task || !task.id) return;
+          const existing = otherById.get(task.id);
+          if (existing) {
+            if (!existing.createdDate && task.createdDate) existing.createdDate = task.createdDate;
+            existing.completed = !!task.completed;
+            existing.completedDate = task.completedDate || null;
+            existing.deadline = task.deadline || existing.deadline || null;
+          } else {
+            const entry = { id: task.id, createdDate: task.createdDate || null, completed: !!task.completed, completedDate: task.completedDate || null, deadline: task.deadline || null, legacy: !task.createdDate };
+            targetState.statsLedger.otherTasks.push(entry);
+            otherById.set(task.id, entry);
+          }
+        });
+        const meetingById = new Map(targetState.statsLedger.meetings.map(item => [item.id, item]));
+        (targetState.events || []).forEach(event => {
+          if (!event || !event.id) return;
+          const existing = meetingById.get(event.id);
+          if (existing && existing.finalized) return;
+          const entry = existing || { id: event.id };
+          entry.date = event.date || entry.date || null;
+          entry.attended = !!event.attended;
+          entry.finalized = !!event.attendanceFinalized;
+          entry.cancelled = false;
+          if (!existing) targetState.statsLedger.meetings.push(entry);
+          meetingById.set(event.id, entry);
+        });
+      }
+
+      function archiveDeletedTaskForStatistics(route, task) {
+        if (route !== 'events' || !task || !task.id) return;
+        ensureStatsLedger(state);
+        const entry = state.statsLedger.meetings.find(item => item.id === task.id);
+        if (entry && !entry.finalized) entry.cancelled = true;
+      }
+
+      function goalProgress(task, type) {
+        if (type === 'weekly' && task.goalType === 'recurring') {
+          const goal = Math.max(1, parseInt(task.goal, 10) || 1);
+          return { done: Math.min(goal, Math.max(0, Number(task.completion) || 0)), total: goal };
+        }
+        return { done: task.completed ? 1 : 0, total: 1 };
+      }
+
+      function recordStatsSnapshot(targetState) {
+        if (!targetState || !Array.isArray(targetState.daily) || !Array.isArray(targetState.weekly)) return;
+        if (!targetState.statsHistory || typeof targetState.statsHistory !== 'object') targetState.statsHistory = {};
+        const snapshot = { daily: { done: 0, total: 0, completed: 0, tasks: targetState.daily.length }, weekly: { done: 0, total: 0, completed: 0, tasks: targetState.weekly.length } };
+        ['daily', 'weekly'].forEach(type => targetState[type].forEach(task => {
+          const p = goalProgress(task, type);
+          snapshot[type].done += p.done;
+          snapshot[type].total += p.total;
+          if (task.completed) snapshot[type].completed++;
+        }));
+        targetState.statsHistory[todayISO()] = snapshot;
+        ensureStatsLedger(targetState);
+      }
+
       function saveState(nextState) {
+        recordStatsSnapshot(nextState);
         removeLegacyStatisticsState(nextState);
         memoryFallbackState = nextState;
         try {
@@ -564,6 +672,7 @@
       function applyTheme() {
         document.documentElement.setAttribute('data-theme', state.theme);
         document.documentElement.setAttribute('data-scheme', COLOR_SCHEMES.includes(state.colorScheme) ? state.colorScheme : 'amber');
+        document.documentElement.style.colorScheme = state.theme === 'dark' ? 'dark' : 'light';
         const themeToggle = document.getElementById('theme-toggle-btn');
         if (themeToggle) {
           const darkMode = state.theme === 'dark';
@@ -607,6 +716,7 @@
           if (openDrafts.length === 0 && Object.keys(openEdits).length === 0 && !activeRatingId) renderTaskList();
         }
         if (rolled || attendanceFinalized) renderTaskList();
+        if (minuteChanged || dateChanged || attendanceFinalized) renderStatistics();
       }
 
       /* ===== Header Actions ===== */
@@ -1571,6 +1681,7 @@
             end: endStr,
             attended: existing ? !!existing.attended : false,
             rating: existing ? existing.rating : null,
+            attendanceFinalized: existing ? !!existing.attendanceFinalized : false,
             order
           };
         }
@@ -1585,8 +1696,129 @@
           deadline: toISODate(istYear, mm, dd),
           completed: existing ? !!existing.completed : false,
           completedDate: existing ? existing.completedDate : null,
+          createdDate: existing ? (existing.createdDate || null) : todayISO(),
           order
         };
+      }
+
+      function dateWindow(period, today) {
+        const end = today;
+        if (period === 'lastMonth') {
+          const n = parseISODate(today);
+          const first = new Date(Date.UTC(n.year, n.month - 2, 1));
+          const last = new Date(Date.UTC(n.year, n.month - 1, 0));
+          return { start: toISODate(first.getUTCFullYear(), first.getUTCMonth() + 1, 1), end: toISODate(last.getUTCFullYear(), last.getUTCMonth() + 1, last.getUTCDate()) };
+        }
+        if (period === 'month') {
+          const n = parseISODate(today);
+          return { start: toISODate(n.year, n.month, 1), end };
+        }
+        const start = new Date(Date.UTC(...today.split('-').map((v, i) => i === 1 ? Number(v) - 1 : Number(v))));
+        start.setUTCDate(start.getUTCDate() - Number(period) + 1);
+        return { start: toISODate(start.getUTCFullYear(), start.getUTCMonth() + 1, start.getUTCDate()), end };
+      }
+
+      function getStatsRate(type, period) {
+        const today = todayISO();
+        const window = dateWindow(period, today);
+        let done = 0, total = 0, completed = 0, tasks = 0;
+        let completedInWindow = 0;
+        let undatedLegacyTasks = 0;
+        if (type === 'daily' || type === 'weekly') {
+          Object.keys(state.statsHistory || {}).filter(date => date >= window.start && date <= window.end).forEach(date => {
+            const point = state.statsHistory[date] && state.statsHistory[date][type];
+            if (!point) return;
+            done += Number(point.done) || 0;
+            total += Number(point.total) || 0;
+            completed += Number(point.completed) || 0;
+            tasks += Number(point.tasks) || 0;
+          });
+        } else if (type === 'events') {
+          const held = (state.statsLedger?.meetings || []).filter(event => event.date >= window.start && event.date <= window.end && event.finalized && !event.cancelled);
+          done = held.filter(event => event.attended).length;
+          total = held.length;
+        } else {
+          const ledger = state.statsLedger?.otherTasks || [];
+          const cohort = ledger.filter(task => task.createdDate && task.createdDate >= window.start && task.createdDate <= window.end);
+          done = cohort.filter(task => task.completed).length;
+          total = cohort.length;
+          completedInWindow = ledger.filter(task => task.completedDate && task.completedDate >= window.start && task.completedDate <= window.end).length;
+          undatedLegacyTasks = ledger.filter(task => !task.createdDate && task.legacy).length;
+        }
+        return { window, done, total, completed, tasks, completedInWindow, undatedLegacyTasks, rate: total ? Math.round(done / total * 100) : null };
+      }
+
+      function getNextMeeting() {
+        const n = now();
+        const current = Date.now();
+        return state.events.map(event => {
+          const parts = String(event.date || '').split('-').map(Number);
+          const time = String(event.start || '00:00').split(':').map(Number);
+          return { event, timestamp: Date.UTC(parts[0], parts[1] - 1, parts[2], time[0], time[1]) - 330 * 60000 };
+        }).filter(item => item.timestamp >= current).sort((a, b) => a.timestamp - b.timestamp)[0] || null;
+      }
+
+      function statsMiniChart(type, window) {
+        const days = [];
+        const today = parseISODate(todayISO());
+        for (let offset = 6; offset >= 0; offset--) {
+          const date = new Date(Date.UTC(today.year, today.month - 1, today.day - offset));
+          days.push(toISODate(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate()));
+        }
+        const values = days.map(date => {
+          if (type === 'daily' || type === 'weekly') {
+            const point = state.statsHistory && state.statsHistory[date] && state.statsHistory[date][type];
+            return point && point.total ? Math.round(point.done / point.total * 100) : null;
+          }
+          if (type === 'events') {
+            const held = (state.statsLedger?.meetings || []).filter(event => event.date === date && event.finalized && !event.cancelled);
+            return held.length ? Math.round(held.filter(event => event.attended).length / held.length * 100) : null;
+          }
+          const created = (state.statsLedger?.otherTasks || []).filter(task => task.createdDate === date);
+          return created.length ? Math.round(created.filter(task => task.completed).length / created.length * 100) : null;
+        });
+        return `<div class="stats-chart" role="img" aria-label="Last 7 days trend">${values.map((value, index) => `<span class="stats-bar${value === null ? ' is-empty' : ''}" title="${days[index]}: ${value === null ? 'No data' : value + '%'}" style="--bar-height:${value === null ? 6 : Math.max(8, value)}%"></span>`).join('')}</div>`;
+      }
+
+      function renderStatistics() {
+        const highlights = document.getElementById('stats-highlights');
+        const grid = document.getElementById('stats-grid');
+        if (!highlights || !grid) return;
+        const today = todayISO();
+        const nextMeeting = getNextMeeting();
+        let meetingText = 'No upcoming meetings';
+        if (nextMeeting) {
+          const hours = Math.max(0, Math.ceil((nextMeeting.timestamp - Date.now()) / 3600000));
+          const days = Math.floor(hours / 24);
+          meetingText = days ? `In ${days} ${days === 1 ? 'day' : 'days'}` : hours ? `In ${hours} ${hours === 1 ? 'hour' : 'hours'}` : 'Starting soon';
+        }
+        const upcomingDeadlines = state.other.filter(task => !task.completed && task.deadline >= today).sort((a, b) => a.deadline.localeCompare(b.deadline));
+        const dueSoon = state.other.filter(task => !task.completed && diffCalendarDays(task.deadline, today) >= 0 && diffCalendarDays(task.deadline, today) <= 7).length;
+        const deadlineText = upcomingDeadlines.length ? `${upcomingDeadlines[0].deadline === today ? 'Today' : `${diffCalendarDays(upcomingDeadlines[0].deadline, today)} days`} · ${dueSoon} due in 7 days` : 'No upcoming deadlines';
+        const overviewTasks = [...state.daily, ...state.weekly, ...state.other];
+        const completedNow = overviewTasks.filter(task => task.completed).length;
+        const overallRate = overviewTasks.length ? `${Math.round(completedNow / overviewTasks.length * 100)}%` : '—';
+        highlights.innerHTML = `<article class="stats-highlight"><span>Overall task progress</span><strong>${overallRate}</strong><small>${completedNow} of ${overviewTasks.length} tasks complete</small></article><article class="stats-highlight"><span>Next meeting</span><strong>${meetingText}</strong></article><article class="stats-highlight"><span>Next deadline</span><strong>${deadlineText}</strong></article>`;
+        const defaults = { daily: '7', weekly: '7', events: '7', other: '15' };
+        const names = { daily: 'Daily Tasks', weekly: 'Weekly Tasks', events: 'Events & Meetings', other: 'Other Tasks' };
+        grid.innerHTML = Object.keys(STATS_PERIODS).map(type => {
+          const period = document.querySelector(`[data-stats-period="${type}"]`)?.value || defaults[type];
+          const result = getStatsRate(type, period);
+          const options = STATS_PERIODS[type].map(([value, label]) => `<option value="${value}" ${value === period ? 'selected' : ''}>${label}</option>`).join('');
+          let descriptor = 'No tasks in this period';
+          if (result.total) {
+            if (type === 'daily' || type === 'weekly') descriptor = `${result.completed} of ${result.tasks} tasks complete across ${result.total} goal units`;
+            else if (type === 'events') descriptor = `${result.done} attended · ${result.total - result.done} missed`;
+            else descriptor = `${result.done} of ${result.total} tasks created in this period · ${result.completedInWindow} completed in period`;
+          } else if (type === 'other' && result.completedInWindow) {
+            descriptor = `${result.completedInWindow} tasks completed in this period; creation dates unavailable for older tasks`;
+          }
+          const headline = result.rate === null ? '—' : `${result.rate}%`;
+          const detail = type === 'other' ? `<span class="stats-detail">${state.other.filter(task => !task.completed && task.deadline < today).length} overdue open${result.undatedLegacyTasks ? ` · ${result.undatedLegacyTasks} older tasks have no creation date` : ''}</span>` : '';
+          const href = { daily: 'daily-tasks.html', weekly: 'weekly-tasks.html', events: 'events-meetings.html', other: 'other-tasks.html' }[type];
+          return `<article class="stats-card"><div class="stats-card-top"><h2>${names[type]}</h2><select class="stats-period" data-stats-period="${type}" aria-label="${names[type]} period">${options}</select></div><div class="stats-card-main"><strong>${headline}</strong>${statsMiniChart(type, result.window)}</div><p>${result.rate === null ? 'Statistics will appear as you track progress.' : descriptor}</p>${detail}<a class="stats-link" href="${href}">Open ${names[type].toLowerCase()} →</a></article>`;
+        }).join('');
+        grid.querySelectorAll('.stats-period').forEach(select => select.addEventListener('change', renderStatistics));
       }
 
       /* ===== Render Task Table ===== */
@@ -1708,6 +1940,7 @@
             delBtn.addEventListener('click', e => {
               e.stopPropagation();
               pushUndo(route, state[route]);
+              archiveDeletedTaskForStatistics(route, task);
               state[route] = state[route].filter(t => t.id !== task.id);
               delete openEdits[task.id];
               saveState(state);
@@ -2547,6 +2780,7 @@
         updateHeaderActions();
         renderTaskList();
         renderTagsGrid();
+        renderStatistics();
         syncRibbonHeight();
       }
 
@@ -2606,6 +2840,8 @@
           // Import legacy local data only once, so another account on this browser never inherits it.
           if (cachedOwner && cachedOwner !== user.id) state = createDefaultState();
         }
+        migrateLegacyStatistics(state, state);
+        ensureStatsLedger(state);
         removeLegacyStatisticsState(state);
         removeDefaultDemoData(state);
         ensureHighPriorityTag(state);
@@ -2706,6 +2942,7 @@
 
         applyTheme();
         runRollovers();
+        if (!state.statsHistory || !state.statsHistory[todayISO()]) saveState(state);
 
         const settingsToggle = document.getElementById('settings-toggle-btn');
         const settingsMenu = document.getElementById('settings-menu');
@@ -2735,6 +2972,7 @@
           applyTheme();
           renderTagsGrid();
           renderTaskList();
+          renderStatistics();
         });
         document.querySelectorAll('[data-scheme-choice]').forEach(option => option.addEventListener('click', () => {
           if (!COLOR_SCHEMES.includes(option.dataset.schemeChoice)) return;
@@ -2744,6 +2982,7 @@
           applyTheme();
           renderTagsGrid();
           renderTaskList();
+          renderStatistics();
         }));
 
         // Edit mode toggle

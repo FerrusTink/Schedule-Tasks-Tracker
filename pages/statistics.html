@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Schedule &amp; Task Tracker</title>
+  <script>
+    (function () {
+      try {
+        var saved = JSON.parse(localStorage.getItem('pa_tracker_v1') || '{}');
+        document.documentElement.setAttribute('data-theme', saved.theme === 'dark' ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-scheme', ['amber', 'blue', 'green', 'red'].includes(saved.colorScheme) ? saved.colorScheme : 'amber');
+      } catch (error) { document.documentElement.setAttribute('data-theme', 'light'); }
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&amp;family=Space+Grotesk:wght@500;600&amp;display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../assets/app.css">
+</head>
+<body data-route="stats">
+  <canvas id="confetti-canvas"></canvas>
+  <header class="ribbon" id="top-ribbon">
+    <div class="ribbon-left"><div class="clock-line"><span class="clock-time" id="ist-time">00:00</span></div></div>
+    <nav class="ribbon-nav" aria-label="Primary Navigation">
+      <a class="nav-btn" data-route="daily" href="daily-tasks.html">Daily Tasks</a>
+      <a class="nav-btn" data-route="weekly" href="weekly-tasks.html">Weekly Tasks</a>
+      <a class="nav-btn" data-route="events" href="events-meetings.html">Events &amp; Meetings</a>
+      <a class="nav-btn" data-route="other" href="other-tasks.html">Other Tasks</a>
+      <a class="nav-btn" data-route="stats" href="statistics.html">Statistics</a>
+    </nav>
+    <div class="ribbon-right">
+      <button type="button" class="clock-date-btn" id="ist-date-btn" aria-label="Open monthly calendar">23 November, 2026</button>
+      <span class="clock-day" id="ist-day">Monday</span>
+      <div class="settings-wrap">
+        <button type="button" class="settings-toggle" id="settings-toggle-btn" aria-label="Settings" aria-expanded="false" aria-controls="settings-menu"></button>
+        <div class="settings-menu" id="settings-menu" hidden>
+          <div class="settings-group mode-settings-group"><button type="button" class="mode-switch" id="theme-toggle-btn" aria-label="Toggle light and dark mode" aria-pressed="false"><span class="mode-switch-label mode-label-light">Light</span><span class="mode-switch-track" aria-hidden="true"><span class="mode-switch-thumb"></span></span><span class="mode-switch-label mode-label-dark">Dark</span></button></div>
+          <div class="settings-group" role="group" aria-label="Colour scheme">
+            <button type="button" class="settings-option" id="scheme-toggle-btn" aria-expanded="false" aria-controls="scheme-options">Colour scheme<span class="settings-chevron" aria-hidden="true">⌄</span></button>
+            <div class="settings-schemes" id="scheme-options" hidden><button type="button" class="settings-option" data-scheme-choice="amber">Amber</button><button type="button" class="settings-option" data-scheme-choice="blue">Blue</button><button type="button" class="settings-option" data-scheme-choice="green">Green</button><button type="button" class="settings-option" data-scheme-choice="red">Red</button></div>
+          </div>
+          <div class="settings-group settings-account-group"><button type="button" class="settings-option" id="sign-out-btn" style="display:none;">Sign in to sync</button></div>
+        </div>
+      </div>
+    </div>
+  </header>
+  <main class="app-main" id="app-main">
+    <div class="page-header">
+      <div class="page-heading"><h1 class="page-title" id="page-title">Statistics</h1></div>
+      <div class="header-actions" id="header-actions">
+        <button type="button" class="text-btn" id="undo-btn" aria-label="Undo" style="display:none;">Undo</button><button type="button" class="text-btn" id="redo-btn" aria-label="Redo" style="display:none;">Redo</button><button type="button" class="icon-btn" id="edit-mode-btn" aria-label="Edit"></button><button type="button" class="icon-btn btn-primary" id="add-task-btn" aria-label="Add"></button>
+      </div>
+    </div>
+    <section class="stats-overview" aria-label="Task statistics overview">
+      <div class="stats-highlights" id="stats-highlights"></div>
+      <div class="stats-grid" id="stats-grid"></div>
+      <p class="stats-footnote">Available history is carried forward; new activity is tracked from now on.</p>
+    </section>
+  </main>
+  <div class="popup-backdrop" id="calendar-backdrop" role="dialog" aria-modal="true" aria-label="Monthly Calendar"><div class="popup-card" id="calendar-card"><div class="cal-header"><button type="button" class="icon-btn" id="cal-prev-btn" aria-label="Previous month"></button><div class="cal-title" id="cal-title">November 2026</div><button type="button" class="icon-btn" id="cal-next-btn" aria-label="Next month"></button></div><div class="cal-weekdays"><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div><div>Sun</div></div><div class="cal-days" id="cal-days"></div></div></div>
+  <div class="popup-backdrop" id="tag-editor-backdrop" role="dialog" aria-modal="true" aria-label="Tag Editor"><div class="popup-card"><h3 class="modal-title" id="tag-editor-title">Add Tag</h3><div class="modal-field"><label class="modal-label" for="tag-name-input">Tag Name</label><input type="text" id="tag-name-input" class="field-input" style="text-align:left;"></div><div class="modal-field"><span class="modal-label">Colour</span><div id="tag-color-grid" class="tag-color-grid" role="radiogroup" aria-label="Tag colour"></div></div><div id="tag-editor-error" class="draft-error" style="display:none;"></div><div class="modal-footer"><button type="button" class="icon-btn btn-danger" id="tag-delete-btn" aria-label="Delete Tag" style="display:none;"></button><div class="modal-footer-right"><button type="button" class="text-btn" id="tag-discard-btn">Discard</button><button type="button" class="text-btn btn-primary" id="tag-save-btn">Save</button></div></div></div></div>
+  <div class="popup-backdrop" id="signout-confirm-backdrop" role="dialog" aria-modal="true" aria-labelledby="signout-confirm-title"><div class="popup-card"><h3 class="modal-title" id="signout-confirm-title">Sign out?</h3><p id="signout-confirm-message"></p><div class="modal-footer"><div class="modal-footer-right"><button type="button" class="text-btn" id="signout-cancel-btn">Cancel</button><button type="button" class="text-btn btn-primary" id="signout-confirm-btn">Sign out</button></div></div></div></div>
+  <div class="auth-backdrop" id="auth-backdrop" role="dialog" aria-modal="true" aria-labelledby="auth-title"><div class="auth-card"><h1 id="auth-title">Sign in to your tracker</h1><p class="auth-copy" id="auth-copy">Use your email and password to access your tasks on any device.</p><form class="auth-form" id="auth-form"><label>Email address<input type="email" id="auth-email" autocomplete="email" required></label><label>Password<input type="password" id="auth-password" autocomplete="current-password" minlength="6" required></label><div class="auth-error" id="auth-error" role="alert"></div><div class="auth-actions"><button class="text-btn btn-primary" id="auth-submit" type="submit">Sign in</button><button class="text-btn" id="auth-toggle" type="button">Create account</button></div></form></div></div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="../assets/app.js"></script>
+</body>
+</html>

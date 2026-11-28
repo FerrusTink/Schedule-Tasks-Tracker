@@ -43,6 +43,6 @@ In **Authentication → Providers**, enable Email. Choose whether new accounts r
 
 Serve `index.html` over HTTPS (or localhost during development). Open the site and create an account. Existing custom local tracker data on the first browser that signs into a new account is copied into that account; old built-in sample tasks and sample tags are removed. Later devices load the account's cloud data. A different account on the same browser gets its own data.
 
-The app saves locally immediately and sends changes to Supabase shortly afterward. A failed sync is indicated in the **Sign out** button's hover text; retry by making a change after connectivity returns.
+The app saves locally immediately and sends changes to Supabase shortly afterward. Statistics history and task/meeting ledgers are stored in the existing JSON `state` field, so this feature does not require a database schema change. A failed sync is indicated in the **Sign out** button's hover text; retry by making a change after connectivity returns.
 
 The site now has multiple HTML pages. Deploy the root `index.html`, the complete `pages/` directory, and the complete `assets/` directory together so all page links and shared Supabase integration remain available. See `APP_STRUCTURE.md` before adding a future page.
