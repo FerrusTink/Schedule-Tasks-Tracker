@@ -259,6 +259,7 @@
       let openEdits = {};  // { [taskId]: { route, focusField, values, error, invalidFields } }
       let activeRatingId = null;
       let calendarMonth = now().month; // 1..12
+      let calendarYear = now().year;
       let editingTagId = null;
       let selectedTagColor = 'blue';
 
@@ -411,6 +412,19 @@
         items.sort((a, b) => {
           const ga = getTaskGroup(route, a, n);
           const gb = getTaskGroup(route, b, n);
+          const doneA = ga === 2;
+          const doneB = gb === 2;
+          if (doneA !== doneB) return doneA ? 1 : -1;
+          if (route === 'other') {
+            const da = Date.parse(String(a.deadline || '') + 'T00:00:00') || Infinity;
+            const db = Date.parse(String(b.deadline || '') + 'T00:00:00') || Infinity;
+            if (da !== db) return da - db;
+          }
+          if (route === 'events') {
+            const ta = Date.parse(String(a.date || '') + 'T' + (a.start || '00:00') + ':00') || Infinity;
+            const tb = Date.parse(String(b.date || '') + 'T' + (b.start || '00:00') + ':00') || Infinity;
+            if (ta !== tb) return ta - tb;
+          }
           if (ga !== gb) return ga - gb;
           return (a.order ?? 0) - (b.order ?? 0);
         });
@@ -608,6 +622,9 @@
         redoBtn.disabled = !isTaskRoute || redoStacks[currentRoute].length === 0;
         editBtn.classList.toggle('active-edit', isEdit);
         editBtn.setAttribute('aria-pressed', isEdit ? 'true' : 'false');
+        const addBtn = document.getElementById('add-task-btn');
+        addBtn.disabled = !!isEdit;
+        addBtn.setAttribute('aria-disabled', isEdit ? 'true' : 'false');
         document.getElementById('header-actions').style.display = isTaskRoute ? 'flex' : 'none';
       }
 
@@ -1746,6 +1763,7 @@
             cb.type = 'checkbox';
             cb.className = 'm3-checkbox';
             cb.checked = !!task.completed;
+            cb.disabled = !!isEdit;
             cb.setAttribute('aria-label', `Mark ${task.task} complete`);
             cb.addEventListener('change', () => {
               const rects = capturePositions();
@@ -1807,7 +1825,7 @@
               minus.className = 'stepper-btn';
               minus.textContent = '−';
               minus.setAttribute('aria-label', 'Decrement completion');
-              minus.disabled = (task.completion || 0) <= 0;
+              minus.disabled = isEdit || (task.completion || 0) <= 0;
 
               const val = document.createElement('span');
               val.className = 'stepper-val';
@@ -1818,7 +1836,7 @@
               plus.className = 'stepper-btn';
               plus.textContent = '+';
               plus.setAttribute('aria-label', 'Increment completion');
-              plus.disabled = (task.completion || 0) >= gNum;
+              plus.disabled = isEdit || (task.completion || 0) >= gNum;
 
               minus.addEventListener('click', () => {
                 const rects = capturePositions();
@@ -1846,6 +1864,7 @@
               cb.type = 'checkbox';
               cb.className = 'm3-checkbox';
               cb.checked = !!task.completed;
+              cb.disabled = !!isEdit;
               cb.setAttribute('aria-label', `Mark ${task.task} complete`);
               cb.addEventListener('change', () => {
                 const rects = capturePositions();
@@ -1990,6 +2009,7 @@
             cb.type = 'checkbox';
             cb.className = 'm3-checkbox';
             cb.checked = !!task.completed;
+            cb.disabled = !!isEdit;
             cb.setAttribute('aria-label', `Mark ${task.task} complete`);
             cb.addEventListener('change', () => {
               const rects = capturePositions();
@@ -2450,10 +2470,10 @@
       /* ===== Calendar Pop-up (5.3) ===== */
       function renderCalendar() {
         const n = now();
-        const year = n.year;
+        const year = calendarYear;
         document.getElementById('cal-title').textContent = `${MONTHS_FULL[calendarMonth - 1]} ${year}`;
-        document.getElementById('cal-prev-btn').disabled = calendarMonth <= 1;
-        document.getElementById('cal-next-btn').disabled = calendarMonth >= 12;
+        document.getElementById('cal-prev-btn').disabled = false;
+        document.getElementById('cal-next-btn').disabled = false;
 
         const daysEl = document.getElementById('cal-days');
         daysEl.innerHTML = '';
@@ -2477,7 +2497,7 @@
         for (let d = 1; d <= daysInMonth; d++) {
           const cell = document.createElement('div');
           cell.className = 'cal-cell';
-          if (calendarMonth === n.month && d === n.day) {
+          if (calendarYear === n.year && calendarMonth === n.month && d === n.day) {
             cell.classList.add('is-today');
           }
           const meetingCount = meetingsByDate[d] || 0;
@@ -2497,10 +2517,17 @@
           }
           daysEl.appendChild(cell);
         }
+        while (daysEl.children.length < 42) {
+          const empty = document.createElement('div');
+          empty.className = 'cal-cell is-empty';
+          daysEl.appendChild(empty);
+        }
       }
 
       function openCalendar() {
-        calendarMonth = now().month;
+        const n = now();
+        calendarMonth = n.month;
+        calendarYear = n.year;
         renderCalendar();
         document.getElementById('calendar-backdrop').classList.add('open');
       }
@@ -2566,8 +2593,10 @@
         };
         if (data && data.state && typeof data.state === 'object') {
           state = data.state;
-          const cloudPreferenceUpdatedAt = Number(state.preferenceUpdatedAt) || 0;
-          if (cachedOwner === user.id && (!cloudPreferenceUpdatedAt || localPreferences.updatedAt > cloudPreferenceUpdatedAt)) {
+          // The inline page bootstrap paints from this same device cache. Keep
+          // that appearance authoritative for the signed-in owner so async
+          // account hydration cannot flash a different theme after first paint.
+          if (cachedOwner === user.id) {
             state.theme = localPreferences.theme;
             state.colorScheme = localPreferences.colorScheme;
             state.preferenceUpdatedAt = localPreferences.updatedAt;
@@ -2753,10 +2782,14 @@
         // Calendar pop-up
         document.getElementById('ist-date-btn').addEventListener('click', openCalendar);
         document.getElementById('cal-prev-btn').addEventListener('click', () => {
-          if (calendarMonth > 1) { calendarMonth--; renderCalendar(); }
+          if (calendarMonth === 1) { calendarMonth = 12; calendarYear--; }
+          else calendarMonth--;
+          renderCalendar();
         });
         document.getElementById('cal-next-btn').addEventListener('click', () => {
-          if (calendarMonth < 12) { calendarMonth++; renderCalendar(); }
+          if (calendarMonth === 12) { calendarMonth = 1; calendarYear++; }
+          else calendarMonth++;
+          renderCalendar();
         });
         document.getElementById('calendar-backdrop').addEventListener('click', e => {
           if (e.target.id === 'calendar-backdrop') closeCalendar();
